@@ -1,0 +1,15 @@
+# DeepSeek 模型配置（必填）
+DEEPSEEK_API_KEY=sk-your-api-key
+DEEPSEEK_MODEL=deepseek-v4-pro
+DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
+
+# 服务端口（可选）
+PORT=8026
+
+# ---- 并发调优（可选，以下为默认值）----
+# gunicorn worker 数量（0=自动检测，推荐 4-8）
+WORKERS=4
+# 请求超时秒数（SSE 长连接场景建议 600）
+TIMEOUT=600
+# 每个 worker 最大并发连接数
+WORKER_CONNECTIONS=1000
