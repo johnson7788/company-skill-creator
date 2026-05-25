@@ -188,6 +188,7 @@ cd frontend && npm run dev
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/health` | 健康检查 |
+| POST | `/api/upload` | 文件上传（multipart/form-data） |
 | POST | `/api/model/chat` | SSE 流式对话 |
 
 详细文档见 [`doc/api.md`](doc/api.md)。

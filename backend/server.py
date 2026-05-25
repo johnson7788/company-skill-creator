@@ -28,7 +28,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
@@ -117,6 +117,7 @@ else:
     _LITELLM_MODEL = f"deepseek/{_DEEPSEEK_MODEL}"
 
 skills_dir = Path(__file__).parent / "skills"
+uploads_dir = Path(__file__).parent / "uploads"
 
 # ---------------------------------------------------------------------------
 # Tools for skills (run_command, view_file)
@@ -158,11 +159,18 @@ def run_command(command: str) -> str:
 def view_file(file_path: str) -> str:
     """Read and return the content of a file.
 
-    Relative paths are resolved from the skills root.
+    Path resolution for relative paths:
+      1. First try relative to the uploads directory (user-uploaded files)
+      2. Then try relative to the skills root (built-in skill files)
+
+    Handles both text and binary files. Text files are returned as-is
+    (truncated at 20000 chars). Binary files return metadata.
+
     Common files:
       - SKILL.md — the company-skill-creator skill definition
       - agents/interviewer.md — interview question templates
       - references/company-context.md — company context capture template
+      - Any user-uploaded file under uploads/<sessionId>/
 
     Args:
         file_path: Absolute or relative path to the file.
@@ -171,12 +179,33 @@ def view_file(file_path: str) -> str:
     try:
         path = Path(file_path)
         if not path.is_absolute():
-            path = skills_dir / "company-skill-creator" / path
-        content = path.read_text(encoding="utf-8")
-        # Truncate if too large to avoid context overflow
-        if len(content) > 20000:
-            content = content[:20000] + "\n\n... [文件过长，已截断]"
-        return content
+            # Try uploads dir first, then skills dir
+            candidate = uploads_dir / file_path
+            if candidate.exists():
+                path = candidate
+            else:
+                path = skills_dir / "company-skill-creator" / file_path
+
+        if not path.exists():
+            return f"[错误] 文件不存在: {path}"
+
+        # Try reading as text first
+        try:
+            content = path.read_text(encoding="utf-8")
+            if len(content) > 20000:
+                content = content[:20000] + "\n\n... [文件过长，已截断]"
+            return content
+        except UnicodeDecodeError:
+            # Binary file — return metadata
+            stat = path.stat()
+            return (
+                f"[二进制文件]\n"
+                f"  文件名: {path.name}\n"
+                f"  路径: {path}\n"
+                f"  大小: {stat.st_size:,} bytes\n"
+                f"  提示: 此文件无法以文本方式读取，请使用 run_command 调用对应工具处理"
+                f"（如 python-pptx 读取 .pptx、PyPDF2 读取 .pdf、Pillow 读取图片）"
+            )
     except Exception as exc:
         return f"[错误] 无法读取文件: {exc}"
 
@@ -318,6 +347,15 @@ async def model_chat(request: Request, body: ModelChatRequest):
         raise HTTPException(status_code=400, detail="no user message found")
     last_user_msg = user_messages[-1].content
 
+    # Append uploaded file paths to the user message so the agent knows
+    # what files are available and can read them via view_file
+    uploaded_paths = _extract_uploaded_paths(body.attachment)
+    if uploaded_paths:
+        paths_text = "\n".join(f"  - {p}" for p in uploaded_paths)
+        last_user_msg += (
+            f"\n\n[已上传文件 — 如需读取内容请使用 view_file 工具]\n{paths_text}"
+        )
+
     new_message = types.Content(
         role="user",
         parts=[types.Part(text=last_user_msg)],
@@ -431,6 +469,56 @@ async def model_chat(request: Request, body: ModelChatRequest):
             "Connection": "keep-alive",
         },
     )
+
+
+@app.post("/api/upload")
+async def upload_files(sessionId: str, files: list[UploadFile] = File(...)):
+    """Upload files for a session. Saves to backend/uploads/<sessionId>/.
+
+    Returns file metadata including absolute paths that the agent can
+    use with view_file to read the content.
+    """
+    # Sanitize sessionId to prevent path traversal
+    safe_session = Path(sessionId).name
+    if safe_session != sessionId or not safe_session:
+        raise HTTPException(status_code=400, detail="invalid sessionId")
+
+    session_upload_dir = uploads_dir / safe_session
+    session_upload_dir.mkdir(parents=True, exist_ok=True)
+
+    result_files = []
+    for f in files:
+        # Sanitize filename — keep only the basename
+        safe_name = Path(f.filename).name
+        if not safe_name:
+            continue
+
+        file_path = session_upload_dir / safe_name
+
+        # Write file to disk
+        content = await f.read()
+        file_path.write_bytes(content)
+
+        result_files.append({
+            "name": safe_name,
+            "path": str(file_path.resolve()),
+            "size": len(content),
+            "type": f.content_type or "application/octet-stream",
+        })
+        logger.info("[upload] saved: %s (%s bytes)", file_path, len(content))
+
+    return {"files": result_files}
+
+
+def _extract_uploaded_paths(attachment: Any) -> list[str]:
+    """Extract uploaded file paths from the attachment metadata."""
+    paths = []
+    if isinstance(attachment, dict):
+        for f in attachment.get("files", []):
+            p = f.get("path", "")
+            if p and Path(p).exists():
+                paths.append(p)
+    return paths
 
 
 @app.get("/health")

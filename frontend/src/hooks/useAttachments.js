@@ -1,4 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
+
+const UPLOAD_ENDPOINT = '/api/upload';
 
 function formatFileSize(bytes) {
   if (bytes < 1024) return `${bytes} B`;
@@ -6,38 +8,48 @@ function formatFileSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function guessMimeType(filename) {
-  const ext = filename.split('.').pop().toLowerCase();
-  const map = { md: 'text/markdown', txt: 'text/plain', py: 'text/x-python',
-    js: 'text/javascript', ts: 'text/typescript', yaml: 'text/yaml', yml: 'text/yaml',
-    json: 'application/json', xml: 'text/xml', html: 'text/html', css: 'text/css',
-    java: 'text/x-java', go: 'text/x-go', rs: 'text/x-rust', sh: 'text/x-shellscript',
-    bash: 'text/x-shellscript', toml: 'text/toml', ini: 'text/plain', cfg: 'text/plain' };
-  return map[ext] || 'text/plain';
-}
-
-export default function useAttachments() {
+export default function useAttachments(sessionId) {
   const [attachments, setAttachments] = useState([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const sessionRef = useRef(sessionId);
+  sessionRef.current = sessionId;
 
   const addFiles = useCallback(async (files) => {
-    const results = [];
-    for (const file of files) {
-      if (attachments.some(a => a.name === file.name && a.size === file.size)) continue;
-      try {
-        const content = await file.text();
-        results.push({
-          name: file.name,
-          size: file.size,
-          type: file.type || guessMimeType(file.name),
-          content,
-          encoding: 'utf-8',
-        });
-      } catch {
-        // skip unreadable files
+    const newFiles = Array.from(files).filter(
+      f => !attachments.some(a => a.name === f.name && a.size === f.size)
+    );
+    if (newFiles.length === 0) return;
+
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('sessionId', sessionRef.current);
+      newFiles.forEach(f => formData.append('files', f));
+
+      const res = await fetch(UPLOAD_ENDPOINT, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || `上传失败: HTTP ${res.status}`);
       }
-    }
-    if (results.length > 0) {
-      setAttachments(prev => [...prev, ...results]);
+
+      const data = await res.json();
+      // Store metadata from server response (name, path, size, type)
+      const uploaded = data.files.map(f => ({
+        name: f.name,
+        size: f.size,
+        type: f.type,
+        path: f.path,
+      }));
+
+      setAttachments(prev => [...prev, ...uploaded]);
+    } catch (err) {
+      console.error('文件上传失败:', err);
+    } finally {
+      setIsUploading(false);
     }
   }, [attachments]);
 
@@ -57,6 +69,7 @@ export default function useAttachments() {
 
   return {
     attachments,
+    isUploading,
     addFiles,
     removeAttachment,
     clearAttachments,

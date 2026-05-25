@@ -32,16 +32,58 @@ curl http://localhost:8046/health
 }
 ```
 
-**错误场景**:
+---
 
-| 场景 | 状态码 | 说明 |
-|------|--------|------|
-| 服务未启动 | 连接失败 | 请检查服务是否已启动 |
-| 服务异常 | 5xx | 服务内部错误 |
+## 2. 文件上传
+
+### POST /api/upload
+
+上传文件到服务端。文件保存到 `backend/uploads/<sessionId>/` 目录，返回文件路径供 Agent 通过 `view_file` 工具读取。
+
+- **Content-Type**: `multipart/form-data`
+
+**请求参数**:
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `sessionId` | string | **是** | 会话 ID，文件将存入对应的 session 子目录 |
+| `files` | file[] | **是** | 一个或多个文件 |
+
+**请求示例**:
+
+```bash
+curl -X POST http://localhost:8046/api/upload \
+  -F "sessionId=sess-abc" \
+  -F "files=@requirements.md" \
+  -F "files=@模版.pptx"
+```
+
+**成功响应** (200):
+
+```json
+{
+  "files": [
+    {
+      "name": "requirements.md",
+      "path": "/path/to/backend/uploads/sess-abc/requirements.md",
+      "size": 12696,
+      "type": "text/markdown"
+    },
+    {
+      "name": "模版.pptx",
+      "path": "/path/to/backend/uploads/sess-abc/模版.pptx",
+      "size": 1887778,
+      "type": "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    }
+  ]
+}
+```
+
+> **说明**: 上传后的文件路径会通过 `attachment.files[].path` 传给 `/api/model/chat`，后端自动将路径追加到用户消息中告知 Agent。Agent 使用 `view_file` 工具按需读取文件内容。
 
 ---
 
-## 2. 对话接口（SSE 流式）
+## 3. 对话接口（SSE 流式）
 
 ### POST /api/model/chat
 
@@ -86,7 +128,7 @@ curl http://localhost:8046/health
 | `messages[].role` | string | **是** | - | 角色：`system` / `user` / `assistant` / `tool` |
 | `messages[].content` | string | **是** | - | 消息内容（支持文本） |
 | `type` | int | 否 | `0` | 消息类型：`0` = 正常对话，`-1` = 终止当前流 |
-| `attachment` | object | 否 | `{}` | 附件元数据，详见 [附件字段说明](#3-附件字段说明) |
+| `attachment` | object | 否 | `{}` | 附件元数据（含文件路径），详见 [附件字段说明](#4-附件字段说明) |
 | `callTools` | bool | 否 | `true` | 是否允许 Agent 调用工具 |
 | `XAPIVersion` | int | 否 | `1` | API 版本号 |
 
@@ -118,7 +160,7 @@ curl http://localhost:8046/health
 
 ---
 
-## 2.1 SSE 流式响应格式
+## 3.1 SSE 流式响应格式
 
 正常对话时（`type != -1`），后端返回 `text/event-stream` 格式的流式响应。
 
@@ -189,7 +231,7 @@ Connection: keep-alive
 
 ---
 
-## 2.2 完整 SSE 流示例
+## 3.2 完整 SSE 流示例
 
 **请求**:
 
@@ -236,9 +278,9 @@ data: {"linkId":"fe-001","sessionId":"sess-20240524-001","userId":1,"functionId"
 
 ---
 
-## 3. 附件字段说明
+## 4. 附件字段说明
 
-`attachment` 字段用于传递用户上传的附件元数据，该字段会被原样回传至每个 SSE 事件中。
+文件先通过 `POST /api/upload` 上传到服务端，再将返回的路径信息填入 `attachment.files[]`。后端自动将路径追加到用户消息末尾，Agent 通过 `view_file` 工具按需读取。
 
 **推荐结构**:
 
@@ -247,11 +289,10 @@ data: {"linkId":"fe-001","sessionId":"sess-20240524-001","userId":1,"functionId"
   "attachment": {
     "files": [
       {
-        "name": "文件名.后缀",
-        "size": 1024,
+        "name": "requirements.md",
+        "size": 12696,
         "type": "text/markdown",
-        "content": "文件内容（Base64 或原始文本）",
-        "encoding": "utf-8"
+        "path": "/absolute/path/to/uploads/sess-abc/requirements.md"
       }
     ]
   }
@@ -260,19 +301,15 @@ data: {"linkId":"fe-001","sessionId":"sess-20240524-001","userId":1,"functionId"
 
 **文件内容传递策略**:
 
-由于当前后端不提供独立的文件上传接口，前端应采用以下策略：
-
-1. **小文件**（< 10KB）：读取文件内容，直接附加在 `attachment.files[].content` 中
-2. **大文件**：将文件内容拼接在 `messages[].content` 中，格式如下：
-
-```
-[附件: 文件名.md]
-文件内容...
-
----
-
-用户问题文字
-```
+1. 前端调用 `POST /api/upload` 上传文件，获取文件路径
+2. 将路径填入 `attachment.files[].path`，发送到 `POST /api/model/chat`
+3. 后端从 `attachment.files` 提取路径，自动追加到用户消息：
+   ```
+   [已上传文件 — 如需读取内容请使用 view_file 工具]
+     - /path/to/uploads/sess-abc/requirements.md
+     - /path/to/uploads/sess-abc/模版.pptx
+   ```
+4. Agent 调用 `view_file` 工具读取文件内容（文本文件返回内容，二进制文件返回元信息）
 
 **`files` 数组项字段**:
 
@@ -280,13 +317,12 @@ data: {"linkId":"fe-001","sessionId":"sess-20240524-001","userId":1,"functionId"
 |------|------|------|
 | `name` | string | 文件名 |
 | `size` | number | 文件大小（字节） |
-| `type` | string | MIME 类型，如 `text/markdown`、`text/plain` |
-| `content` | string | 文件内容（文本文件直接传原文即可） |
-| `encoding` | string | 编码格式，默认 `utf-8` |
+| `type` | string | MIME 类型 |
+| `path` | string | 服务端文件绝对路径，供 Agent 通过 `view_file` 读取 |
 
 ---
 
-## 4. 错误响应
+## 5. 错误响应
 
 ### 4.1 参数校验失败 (400)
 
@@ -320,50 +356,60 @@ SSE 流过程中可能因以下原因中断：
 
 ---
 
-## 5. 完整前端调用流程
+## 6. 完整前端调用流程
 
 ```
-┌──────────┐          ┌──────────────┐          ┌──────────┐
-│  前端 UI  │          │ POST /api/   │          │  Agent   │
-│ (SSE 消费)│          │ model/chat   │          │  (ADK)   │
-└────┬─────┘          └──────┬───────┘          └────┬─────┘
-     │                       │                       │
-     │ 1. 用户输入/上传附件    │                       │
-     │──────────────────────>│                       │
-     │  POST + SSE 连接       │                       │
-     │                       │ 2. 转发用户消息        │
-     │                       │──────────────────────>│
-     │                       │                       │
-     │                       │ 3. reasoningMessage   │
-     │                       │<──────────────────────│
-     │ 4. 思考/工具事件        │   (思考/工具调用)      │
-     │<──────────────────────│                       │
-     │  data: {reasoning...} │                       │
-     │                       │                       │
-     │                       │ 5. message 文本块      │
-     │                       │<──────────────────────│
-     │ 6. 渲染回复文本         │   (Agent 回复)        │
-     │<──────────────────────│                       │
-     │  data: {message...}   │                       │
-     │                       │                       │
-     │                       │ 7. [stop] 信号         │
-     │ 8. 流结束              │                       │
-     │<──────────────────────│                       │
-     │  data: {message:      │                       │
-     │         "[stop]"}     │                       │
+┌──────────┐      ┌──────────────┐      ┌──────────────┐      ┌──────────┐
+│  前端 UI  │      │ POST /api/   │      │ POST /api/   │      │  Agent   │
+│          │      │   upload     │      │ model/chat   │      │  (ADK)   │
+└────┬─────┘      └──────┬───────┘      └──────┬───────┘      └────┬─────┘
+     │                   │                    │                    │
+     │ 0. 用户选择文件     │                    │                    │
+     │──────────────────>│                    │                    │
+     │  FormData + files  │                    │                    │
+     │                   │ 返回文件路径        │                    │
+     │<──────────────────│                    │                    │
+     │                   │                    │                    │
+     │ 1. 用户输入+文件路径│                    │                    │
+     │───────────────────────────────────────>│                    │
+     │  POST + SSE 连接                        │                    │
+     │                                          │ 2. 转发用户消息    │
+     │                                          │──────────────────>│
+     │                                          │ 文件路径已追加到    │
+     │                                          │ 用户消息末尾        │
+     │                                          │                    │
+     │                                          │ 3. Agent 调用      │
+     │                                          │  view_file 读附件   │
+     │                                          │<──────────────────│
+     │                                          │──────────────────>│
+     │                                          │                    │
+     │                                          │ 4. reasoningMessage│
+     │  5. 思考/工具事件                         │<──────────────────│
+     │<────────────────────────────────────────│                    │
+     │  data: {reasoning...}                   │                    │
+     │                                          │                    │
+     │                                          │ 6. message 文本块   │
+     │  7. 渲染回复文本                          │<──────────────────│
+     │<────────────────────────────────────────│                    │
+     │  data: {message...}                     │                    │
+     │                                          │                    │
+     │                                          │ 8. [stop] 信号      │
+     │  9. 流结束                               │                    │
+     │<────────────────────────────────────────│                    │
+     │  data: {message: "[stop]"}              │                    │
 ```
 
 ---
 
-## 6. 前端集成注意事项
+## 7. 前端集成注意事项
 
-### 6.1 Session 管理
+### 7.1 Session 管理
 
 - 每次新对话需要生成唯一的 `sessionId`（推荐使用 `crypto.randomUUID()`）
 - 同一会话中的所有消息必须使用相同的 `sessionId`
 - Agent 通过 ADK session 自动维护对话历史，前端**无需**回传历史消息
 
-### 6.2 SSE 消费（JavaScript）
+### 7.2 SSE 消费（JavaScript）
 
 ```javascript
 async function sendMessage(sessionId, message, attachment) {
@@ -414,24 +460,27 @@ async function sendMessage(sessionId, message, attachment) {
 }
 ```
 
-### 6.3 文件上传处理
+### 7.3 文件上传处理
 
 ```javascript
-async function handleFileUpload(file) {
-  // 读取文件内容
-  const content = await file.text();
+async function uploadFiles(sessionId, files) {
+  const formData = new FormData();
+  formData.append('sessionId', sessionId);
+  files.forEach(f => formData.append('files', f));
 
-  return {
-    name: file.name,
-    size: file.size,
-    type: file.type || 'text/plain',
-    content: content,
-    encoding: 'utf-8'
-  };
+  const res = await fetch('/api/upload', {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!res.ok) throw new Error('上传失败');
+  const data = await res.json();
+  // data.files = [{ name, path, size, type }, ...]
+  return data.files;
 }
 ```
 
-### 6.4 终止对话
+### 7.4 终止对话
 
 ```javascript
 async function abortSession(sessionId) {
@@ -450,7 +499,7 @@ async function abortSession(sessionId) {
 
 ---
 
-## 7. 环境配置
+## 8. 环境配置
 
 后端服务依赖以下环境变量（`.env` 文件）：
 
@@ -463,8 +512,9 @@ async function abortSession(sessionId) {
 
 ---
 
-## 8. 版本历史
+## 9. 版本历史
 
 | 版本 | 日期 | 变更说明 |
 |------|------|----------|
 | 1.0.0 | 2026-05-24 | 初始版本，包含健康检查和 SSE 流式对话接口 |
+| 1.1.0 | 2026-05-25 | 新增 `POST /api/upload` 文件上传端点；`view_file` 支持二进制文件；附件改为路径传递方式 |

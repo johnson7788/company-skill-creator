@@ -11,7 +11,7 @@
 | 文件 | 大小 | 说明 |
 |------|------|------|
 | `demo/upload/requirements.md` | 12.7 KB | 需求收集文档（Skill 目标、公司信息、品牌规范、PPT 结构模板、示例） |
-| `demo/upload/模版.pptx` | 1.8 MB | 公司 PPT 模版文件（二进制，前端会自动跳过内容读取） |
+| `demo/upload/模版.pptx` | 1.8 MB | 公司 PPT 模版文件（上传到服务端，Agent 通过 view_file 按需读取） |
 
 ## 第一步：启动服务
 
@@ -45,12 +45,15 @@ curl http://localhost:8046/health
 
 #### 第 1 轮对话：上传材料 + 发起请求
 
-1. 点击 📎 按钮或拖拽，上传 `demo/upload/requirements.md`
-   - 附件预览条会显示文件名和大小
-   - `模版.pptx` 上传后前端会跳过内容读取（二进制文件），但可在对话中说明
+1. 点击 📎 按钮或拖拽，上传 `demo/upload/requirements.md` 和 `demo/upload/模版.pptx`
+   - 前端通过 `POST /api/upload` 将文件上传到服务端 `backend/uploads/<sessionId>/` 目录
+   - 附件预览条会显示两个文件名和大小
 2. 在输入框发送第一句话，例如：
 
-> 我想创建一个公司内部 PPT 自动生成的 skill。我已经上传了 requirements.md，里面包含了所有需求、公司信息、品牌规范和 PPT 结构模板。另外模版.pptx 也在 demo/upload/ 目录下，请参考它。帮我开始创建这个 skill。
+> 我想创建一个公司内部 PPT 自动生成的 skill。我已经上传了 requirements.md（需求文档）和模版.pptx（公司 PPT 模版），请帮我开始创建这个 skill。
+
+   - Agent 会收到文件路径提示，通过 `view_file` 工具读取 requirements.md 的内容
+   - 在思考过程中可看到 `[工具] 调用: view_file` / `[工具] 完成: view_file`
 
 #### 第 2 轮及后续：按 Agent 引导逐步回答
 
@@ -177,7 +180,7 @@ python scripts/package_skill.py ../../ppt-generator
 
 ### 异常场景
 
-- [ ] 上传 `.pptx` 二进制文件时前端不会崩溃（预期：静默跳过内容，但文件名出现在附件列表）
+- [ ] 上传 `.pptx` 二进制文件时前端正常处理（预期：上传到服务端，文件路径传给 Agent）
 - [ ] 终止对话功能正常（点击终止按钮或 `Ctrl+C`）
 - [ ] 新建会话后历史消息清空
 
@@ -194,8 +197,8 @@ python scripts/package_skill.py ../../ppt-generator
 ### Q: 前端看不到 agent 回复？
 A: 检查后端日志 `[model-chat]` 是否有输出，确认 SSE 流正常。查看浏览器 Network 标签中 `/api/model/chat` 的 EventStream。
 
-### Q: 模版.pptx 没有被 Agent 读取？
-A: 前端 `useAttachments.js` 的 `file.text()` 对二进制文件会抛异常并被 catch 跳过。这是预期行为——你需要在对话文字中告知 Agent 模版文件的路径（如 `demo/upload/模版.pptx`），Agent 会通过 `view_file` 工具去读（但二进制文件读出来是乱码）。更好的做法是在 requirements.md 中已经描述了模版的所有视觉规范。
+### Q: 模版.pptx 上传后 Agent 能正常处理吗？
+A: 文件先通过 `POST /api/upload` 上传到服务端，路径通过 `attachment.files[].path` 传给 Agent。Agent 调用 `view_file` 时，对于 `.pptx` 这类二进制文件会返回文件元信息（文件名、大小、路径、提示用 python-pptx 等工具处理）。模版中的视觉规范（颜色、字体、布局）在 `requirements.md` 中已有文字描述，Agent 会优先参考文字描述。
 
 ### Q: CLI 客户端连接失败？
 A: 确认 `python server.py` 已启动且端口 8046 未被占用。

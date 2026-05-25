@@ -52,7 +52,7 @@ export default function ChatInput({ onSend, onStop, isStreaming, onFilesAdded })
             ref={fileInputRef}
             type="file"
             multiple
-            accept=".md,.txt,.py,.js,.ts,.yaml,.yml,.json,.xml,.csv,.html,.css,.java,.go,.rs,.sh,.bash,.toml,.ini,.cfg,.env.example"
+            accept="*"
             onChange={handleFileChange}
             hidden
           />

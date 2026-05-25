@@ -19,12 +19,13 @@ export default function App() {
 
   const {
     attachments,
+    isUploading,
     addFiles,
     removeAttachment,
     clearAttachments,
     popAttachments,
     formatFileSize,
-  } = useAttachments();
+  } = useAttachments(sessionId);
 
   const chatAreaRef = useRef(null);
   const toastTimer = useRef(null);

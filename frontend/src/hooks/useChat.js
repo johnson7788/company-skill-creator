@@ -44,21 +44,22 @@ export default function useChat() {
     if (isStreaming) return;
     if (!text && attachments.length === 0) return;
 
-    // Build message content
+    // Build message content — reference file paths instead of inlining content
     let content = '';
     if (attachments.length > 0) {
       content += attachments.map((f, i) =>
-        `[附件 ${i + 1}: ${f.name}]\n${f.content}\n`
+        `[附件 ${i + 1}: ${f.name} → ${f.path}]`
       ).join('\n');
-      content += '---\n\n';
+      content += '\n\n';
     }
-    content += text || '请分析以上附件内容。';
+    content += text || '请使用 view_file 工具读取以上附件。';
 
     const attachmentMeta = {
       files: attachments.map(f => ({
         name: f.name,
         size: f.size,
         type: f.type,
+        path: f.path,
       })),
     };
 
