@@ -28,7 +28,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
@@ -472,7 +472,7 @@ async def model_chat(request: Request, body: ModelChatRequest):
 
 
 @app.post("/api/upload")
-async def upload_files(sessionId: str, files: list[UploadFile] = File(...)):
+async def upload_files(sessionId: str = Form(...), files: list[UploadFile] = File(...)):
     """Upload files for a session. Saves to backend/uploads/<sessionId>/.
 
     Returns file metadata including absolute paths that the agent can
