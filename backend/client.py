@@ -15,7 +15,7 @@ import time
 
 import httpx
 
-BASE_URL = "http://localhost:8046"
+BASE_URL = "http://localhost:8036"
 ENDPOINT = f"{BASE_URL}/api/model/chat"
 
 

@@ -38,7 +38,7 @@ echo ""
 # --- Backend ---
 # Write to temp log, tail -f for prefixed output
 # $! after &> captures the real python PID, not a pipe component
-echo -e "${BLUE}[start.sh] 启动后端 (port 8046)...${NC}"
+echo -e "${BLUE}[start.sh] 启动后端 (port 8036)...${NC}"
 cd "$ROOT/backend"
 BACKEND_LOG=$(mktemp)
 python server.py &> "$BACKEND_LOG" &
@@ -58,8 +58,8 @@ done &
 echo ""
 echo -e "${GREEN}----------------------------------------${NC}"
 echo -e "${GREEN}  前端: http://localhost:5100${NC}"
-echo -e "${GREEN}  后端: http://localhost:8046${NC}"
-echo -e "${GREEN}  API文档: http://localhost:8046/docs${NC}"
+echo -e "${GREEN}  后端: http://localhost:8036${NC}"
+echo -e "${GREEN}  API文档: http://localhost:8036/docs${NC}"
 echo -e "${GREEN}  按 Ctrl+C 停止所有服务${NC}"
 echo -e "${GREEN}----------------------------------------${NC}"
 echo ""

@@ -134,8 +134,8 @@ npm install
 | 地址 | 说明 |
 |------|------|
 | http://localhost:5173 | 前端对话界面 |
-| http://localhost:8046 | 后端 API |
-| http://localhost:8046/docs | Swagger API 文档 |
+| http://localhost:8036 | 后端 API |
+| http://localhost:8036/docs | Swagger API 文档 |
 
 按 `Ctrl+C` 停止所有服务。
 
