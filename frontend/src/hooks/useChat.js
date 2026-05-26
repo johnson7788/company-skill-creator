@@ -40,7 +40,7 @@ export default function useChat() {
   }, [isStreaming]);
 
   // Send message
-  const sendMessage = useCallback(async (text, attachments) => {
+  const sendMessage = useCallback(async (text, attachments, activeSkills) => {
     if (isStreaming) return;
     if (!text && attachments.length === 0) return;
 
@@ -91,19 +91,25 @@ export default function useChat() {
     abortRef.current = abortController;
 
     try {
+      const body = {
+        linkId: `fe-${Date.now()}`,
+        sessionId,
+        userId: 1,
+        functionId: 1,
+        messages: [{ role: 'user', content }],
+        attachment: attachmentMeta,
+        callTools: true,
+        XAPIVersion: 1,
+      };
+      // Only include activeSkills if provided and non-empty
+      if (activeSkills && activeSkills.length > 0) {
+        body.activeSkills = activeSkills;
+      }
+
       const response = await fetch(CHAT_ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          linkId: `fe-${Date.now()}`,
-          sessionId,
-          userId: 1,
-          functionId: 1,
-          messages: [{ role: 'user', content }],
-          attachment: attachmentMeta,
-          callTools: true,
-          XAPIVersion: 1,
-        }),
+        body: JSON.stringify(body),
         signal: abortController.signal,
       });
 

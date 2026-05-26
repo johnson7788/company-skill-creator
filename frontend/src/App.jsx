@@ -2,8 +2,10 @@ import React, { useEffect, useRef, useCallback } from 'react';
 import ChatArea from './components/ChatArea';
 import ChatInput from './components/ChatInput';
 import AttachmentBar from './components/AttachmentBar';
+import SkillPanel from './components/SkillPanel';
 import useChat from './hooks/useChat';
 import useAttachments from './hooks/useAttachments';
+import useSkills from './hooks/useSkills';
 
 export default function App() {
   const {
@@ -26,6 +28,15 @@ export default function App() {
     popAttachments,
     formatFileSize,
   } = useAttachments(sessionId);
+
+  const {
+    skills,
+    selectedSkills,
+    loading: skillsLoading,
+    toggleSkill,
+    selectAll,
+    deselectAll,
+  } = useSkills();
 
   const chatAreaRef = useRef(null);
   const toastTimer = useRef(null);
@@ -81,8 +92,8 @@ export default function App() {
 
   const handleSend = useCallback((text) => {
     const files = popAttachments();
-    sendMessage(text, files);
-  }, [sendMessage, popAttachments]);
+    sendMessage(text, files, selectedSkills);
+  }, [sendMessage, popAttachments, selectedSkills]);
 
   const handleStop = useCallback(() => {
     abortStream();
@@ -105,23 +116,36 @@ export default function App() {
         </div>
       </header>
 
-      <div className="chat-area-wrapper" ref={chatAreaRef}>
-        <ChatArea messages={messages} isStreaming={isStreaming} />
+      <div className="app-layout">
+        <SkillPanel
+          skills={skills}
+          selectedSkills={selectedSkills}
+          loading={skillsLoading}
+          onToggle={toggleSkill}
+          onSelectAll={selectAll}
+          onDeselectAll={deselectAll}
+        />
+
+        <div className="chat-layout">
+          <div className="chat-area-wrapper" ref={chatAreaRef}>
+            <ChatArea messages={messages} isStreaming={isStreaming} />
+          </div>
+
+          <AttachmentBar
+            attachments={attachments}
+            onRemove={removeAttachment}
+            onClear={clearAttachments}
+            formatSize={formatFileSize}
+          />
+
+          <ChatInput
+            onSend={handleSend}
+            onStop={handleStop}
+            isStreaming={isStreaming}
+            onFilesAdded={addFiles}
+          />
+        </div>
       </div>
-
-      <AttachmentBar
-        attachments={attachments}
-        onRemove={removeAttachment}
-        onClear={clearAttachments}
-        formatSize={formatFileSize}
-      />
-
-      <ChatInput
-        onSend={handleSend}
-        onStop={handleStop}
-        isStreaming={isStreaming}
-        onFilesAdded={addFiles}
-      />
     </div>
   );
 }

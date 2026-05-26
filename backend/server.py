@@ -77,6 +77,7 @@ class ModelChatRequest(BaseModel):
     attachment: Any = {}
     callTools: bool = True
     XAPIVersion: Any = 1
+    activeSkills: list[str] | None = None  # skill dir names to activate; defaults to ["company-skill-creator"]
 
     @field_validator("attachment", mode="before")
     @classmethod
@@ -214,39 +215,93 @@ def view_file(file_path: str) -> str:
 # Agent setup (ADK)
 # ---------------------------------------------------------------------------
 
-# Load skills from directory
-_skills = []
-for _skill_name in ["company-skill-creator"]:
-    _skill_path = skills_dir / _skill_name
-    if _skill_path.is_dir() and (_skill_path / "SKILL.md").exists():
-        _skills.append(load_skill_from_dir(_skill_path))
-        logger.info("Loaded skill: %s", _skill_name)
-    else:
-        logger.warning("Skill not found: %s", _skill_name)
+# ---------------------------------------------------------------------------
+# Skill discovery and loading
+# ---------------------------------------------------------------------------
 
-_skill_toolset = skill_toolset.SkillToolset(skills=_skills)
 
-agent = LlmAgent(
-    name="company_skill_creator",
-    model=LiteLlm(
-        model=_LITELLM_MODEL,
-        api_key=_DEEPSEEK_API_KEY,
-        api_base=_DEEPSEEK_BASE_URL,
-    ),
-    instruction=AGENT_PROMPT,
-    description="Interactive company skill creator. Guides users through interview, scaffold, auto-generate, write, validate, and package phases to create reusable Claude Code skills for internal company workflows.",
-    tools=[run_command, view_file, _skill_toolset],
-)
+def _parse_skill_md(skill_md_path: Path) -> dict[str, str]:
+    """Parse YAML frontmatter from SKILL.md and return {name, description, dir_name}.
+
+    Falls back to directory name if frontmatter is missing or malformed.
+    """
+    import re
+
+    dir_name = skill_md_path.parent.name
+    try:
+        content = skill_md_path.read_text(encoding="utf-8")
+        match = re.match(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
+        if match:
+            import yaml
+            frontmatter = yaml.safe_load(match.group(1))
+            if isinstance(frontmatter, dict):
+                return {
+                    "name": frontmatter.get("name", dir_name),
+                    "description": frontmatter.get("description", "").strip(),
+                    "dir_name": dir_name,
+                }
+    except Exception:
+        pass
+    return {"name": dir_name, "description": "", "dir_name": dir_name}
+
+
+def _discover_skills() -> list[dict[str, str]]:
+    """Scan skills directory and return list of available skills."""
+    result = []
+    if not skills_dir.is_dir():
+        return result
+    for d in sorted(skills_dir.iterdir()):
+        if d.is_dir() and (d / "SKILL.md").exists():
+            result.append(_parse_skill_md(d / "SKILL.md"))
+    return result
+
+
+def _build_skill_toolset(skill_names: list[str]) -> skill_toolset.SkillToolset:
+    """Build a SkillToolset from a list of skill directory names."""
+    skills = []
+    for name in skill_names:
+        path = skills_dir / name
+        if path.is_dir() and (path / "SKILL.md").exists():
+            skills.append(load_skill_from_dir(path))
+            logger.info("Loaded skill: %s", name)
+        else:
+            logger.warning("Skill not found: %s", name)
+    return skill_toolset.SkillToolset(skills=skills)
+
+
+# Default skill toolset for backward compatibility (used when no activeSkills specified)
+_default_skill_toolset = _build_skill_toolset(["company-skill-creator"])
 
 # ---------------------------------------------------------------------------
 # Runner setup
 # ---------------------------------------------------------------------------
 session_service = InMemorySessionService()
-runner = Runner(
-    agent=agent,
-    app_name=_APP_NAME,
-    session_service=session_service,
-)
+
+
+def _build_runner(active_skills: list[str] | None = None) -> tuple[Runner, LlmAgent]:
+    """Build a Runner and LlmAgent with the specified active skills.
+
+    Returns (runner, agent) tuple so the agent can be used for abort tracking if needed.
+    """
+    skill_names = active_skills or ["company-skill-creator"]
+    toolset = _build_skill_toolset(skill_names)
+    agent = LlmAgent(
+        name="company_skill_creator",
+        model=LiteLlm(
+            model=_LITELLM_MODEL,
+            api_key=_DEEPSEEK_API_KEY,
+            api_base=_DEEPSEEK_BASE_URL,
+        ),
+        instruction=AGENT_PROMPT,
+        description="Interactive company skill creator. Guides users through interview, scaffold, auto-generate, write, validate, and package phases to create reusable Claude Code skills for internal company workflows.",
+        tools=[run_command, view_file, toolset],
+    )
+    runner = Runner(
+        agent=agent,
+        app_name=_APP_NAME,
+        session_service=session_service,
+    )
+    return runner, agent
 
 # ---------------------------------------------------------------------------
 # Abort tracking
@@ -332,6 +387,9 @@ async def model_chat(request: Request, body: ModelChatRequest):
     base = _build_base(body)
     user_id = str(body.userId)
     session_id = body.sessionId
+
+    # Build runner and agent with the requested active skills
+    runner, _agent = _build_runner(body.activeSkills)
 
     # Log user input
     for msg in body.messages:
@@ -524,6 +582,13 @@ def _extract_uploaded_paths(attachment: Any) -> list[str]:
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/api/skills")
+async def list_skills():
+    """Return list of available skills with name and description from SKILL.md frontmatter."""
+    discovered = _discover_skills()
+    return {"skills": discovered}
 
 
 async def _ensure_session(user_id: str, session_id: str) -> None:

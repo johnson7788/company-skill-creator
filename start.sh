@@ -47,7 +47,7 @@ tail -f "$BACKEND_LOG" | while IFS= read -r line; do
 done &
 
 # --- Frontend ---
-echo -e "${GREEN}[start.sh] 启动前端 (port 5102)...${NC}"
+echo -e "${GREEN}[start.sh] 启动前端 (port 5100)...${NC}"
 cd "$ROOT/frontend"
 FRONTEND_LOG=$(mktemp)
 npx vite --host &> "$FRONTEND_LOG" &
@@ -57,7 +57,7 @@ done &
 
 echo ""
 echo -e "${GREEN}----------------------------------------${NC}"
-echo -e "${GREEN}  前端: http://localhost:5102${NC}"
+echo -e "${GREEN}  前端: http://localhost:5100${NC}"
 echo -e "${GREEN}  后端: http://localhost:8046${NC}"
 echo -e "${GREEN}  API文档: http://localhost:8046/docs${NC}"
 echo -e "${GREEN}  按 Ctrl+C 停止所有服务${NC}"
