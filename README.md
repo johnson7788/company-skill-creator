@@ -141,7 +141,7 @@ npm install
 
 | 地址 | 说明 |
 |------|------|
-| http://localhost:5173 | 前端对话界面 |
+| http://localhost:5100 | 前端对话界面 |
 | http://localhost:8036 | 后端 API |
 | http://localhost:8036/docs | Swagger API 文档 |
 
@@ -161,7 +161,7 @@ cd frontend && npm run dev
 
 ### 创建一个企业 Skill
 
-1. 打开前端界面 http://localhost:5173
+1. 打开前端界面 http://localhost:5100
 2. 告诉 Agent 你想创建什么 Skill，例如：
    - "帮我创建一个代码审查 skill，基于我们团队的 review-checklist.md"
    - "我想做一个自动生成周报 PPT 的 skill，这是我们的模版和品牌规范"
