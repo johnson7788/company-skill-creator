@@ -49,6 +49,14 @@
 | 4. 撰写 SKILL.md | 渐进式披露，精炼主文件，细节放 references/ | 完整的 SKILL.md |
 | 5. 校验打包 | `quick_validate.py` → `package_skill.py` | `.skill` 文件交付 |
 
+## 示例截图
+
+![示例问题 1](doc/示例问题-1.png)
+
+![示例问题 2](doc/示例问题-2.png)
+
+![示例问题 3](doc/示例问题-3.png)
+
 ## 项目结构
 
 ```
